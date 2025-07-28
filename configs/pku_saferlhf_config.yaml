@@ -1,0 +1,192 @@
+# PKU-SafeRLHF Multi-Dimensional Preference Configuration
+# This configuration is for balancing helpfulness and safety
+
+experiment_name: pku_saferlhf_multi_dimensional
+experiment_type: multi_dim
+description: Multi-dimensional preference alignment balancing helpfulness and safety
+tags:
+  - pku-saferlhf
+  - multi-dimensional
+  - safety
+  - helpfulness
+
+model:
+  # Patient model (frozen large LLM)
+  patient_model_name: meta-llama/Llama-2-7b-hf
+  patient_device: auto
+  patient_dtype: float16
+  patient_load_in_8bit: false
+  patient_load_in_4bit: false
+  
+  # Doctor model with 2 preference dimensions
+  doctor_model_name: meta-llama/Llama-2-7b-hf
+  doctor_num_preference_dims: 2  # Helpfulness and Safety
+  doctor_value_head_hidden_size: 512
+  doctor_device: auto
+  doctor_dtype: float16
+  doctor_freeze_base_model: false
+  
+  # Common settings
+  trust_remote_code: false
+  use_cache: true
+  cache_dir: ./cache
+
+data:
+  dataset_name: PKU-Alignment/PKU-SafeRLHF-10K
+  dataset_split: train
+  max_samples: 10000
+  max_sequence_length: 1024
+  preference_dimension: safety_helpfulness
+  
+  # Data processing
+  batch_size: 4
+  num_workers: 4
+  shuffle: true
+  seed: 42
+  
+  # Validation
+  validation_split: 0.1
+  validation_max_samples: 1000
+
+reward:
+  # Multi-dimensional behavioral variants
+  # These will be used for different preference dimensions
+  positive_instruction: null  # Will use dimension-specific instructions
+  negative_instruction: null
+  
+  # Token importance calculation
+  epsilon: 1.0e-8
+  tau: 1.0
+  normalization_method: mean
+  smoothing_function: tanh
+  
+  # Reward assignment
+  sparsity_threshold: 0.1
+  reward_scale: 1.0
+  
+  # Processing
+  importance_batch_size: 8
+  save_reward_data: true
+  reward_data_path: ./outputs/pku_saferlhf/reward_data
+
+training:
+  # Optimization
+  learning_rate: 5.0e-5
+  weight_decay: 0.01
+  warmup_steps: 200
+  max_steps: 15000  # More steps for multi-dimensional learning
+  gradient_clip_norm: 1.0
+  accumulation_steps: 1
+  
+  # Loss configuration
+  lambda_value: 1.0
+  subtb_clamp_min: -10.0
+  subtb_clamp_max: 10.0
+  subtb_eps: 1.0e-8
+  value_margin: 0.1
+  value_loss_type: hinge
+  
+  # Subtrajectory balance
+  max_subtrajectory_length: null
+  prefix_score_method: cumulative
+  
+  # Training settings
+  batch_size: 4
+  eval_batch_size: 8
+  max_sequence_length: 1024
+  
+  # Checkpointing and logging
+  output_dir: ./outputs/pku_saferlhf
+  save_steps: 500
+  log_steps: 10
+  eval_steps: 200
+  save_total_limit: 3
+  
+  # Early stopping
+  early_stopping_patience: 5
+  early_stopping_threshold: 0.0001
+  
+  # Device and precision
+  device: auto
+  mixed_precision: true
+  gradient_checkpointing: false
+  
+  # Experiment tracking
+  wandb_project: llmdoctor_pku_saferlhf
+  wandb_entity: null
+  wandb_name: null
+
+inference:
+  # Reward-guided decoding with multi-dimensional control
+  alpha: 1.0
+  beta: 1.0  # Overall reward weight
+  
+  # Multi-dimensional preference weights
+  # These can be adjusted at inference time
+  preference_weights:
+    helpfulness: 0.5
+    safety: 0.5
+  
+  # Generation settings
+  max_new_tokens: 512
+  temperature: 1.0
+  top_p: 0.9
+  top_k: null
+  do_sample: true
+  num_return_sequences: 1
+  
+  # Efficiency
+  batch_size: 1
+  use_cache: true
+  
+  # Evaluation with different weight configurations
+  eval_prompts_file: null
+  output_file: ./outputs/pku_saferlhf/generations.json
+  save_generations: true
+
+evaluation:
+  # Evaluation data
+  eval_dataset: PKU-Alignment/PKU-SafeRLHF-10K
+  eval_split: test
+  eval_max_samples: 500
+  
+  # Evaluation method
+  eval_method: gpt4
+  gpt4_api_key: null
+  gpt4_model: gpt-4
+  
+  # Metrics for both dimensions
+  compute_diversity: true
+  diversity_metric: distinct-4
+  compute_perplexity: false
+  
+  # Multi-dimensional evaluation
+  # Will evaluate with different weight combinations
+  preference_weight_configs:
+    - helpfulness: 1.0
+      safety: 0.0
+    - helpfulness: 0.8
+      safety: 0.2
+    - helpfulness: 0.5
+      safety: 0.5
+    - helpfulness: 0.2
+      safety: 0.8
+    - helpfulness: 0.0
+      safety: 1.0
+  
+  # Baseline comparison
+  baseline_methods:
+    - reward_soups
+    - morl
+    - dpo_helpfulness
+    - dpo_safety
+  num_comparisons: 300
+  
+  # Output
+  results_dir: ./results/pku_saferlhf
+  save_detailed_results: true
+
+# Environment settings
+seed: 42
+deterministic: true
+log_level: INFO

@@ -1,0 +1,170 @@
+# HH-RLHF Experiment Configuration
+# This configuration is for standard helpfulness alignment on HH-RLHF dataset
+
+experiment_name: hh_rlhf_llmdoctor
+experiment_type: standard
+description: Token-level flow-guided preference optimization on HH-RLHF dataset
+tags:
+  - hh-rlhf
+  - helpfulness
+  - tfpo
+
+model:
+  # Patient model (frozen large LLM)
+  patient_model_name: meta-llama/Llama-2-7b-hf
+  patient_device: auto
+  patient_dtype: float16
+  patient_load_in_8bit: false
+  patient_load_in_4bit: false
+  
+  # Doctor model (smaller trainable model)
+  doctor_model_name: meta-llama/Llama-2-7b-hf
+  doctor_num_preference_dims: 1
+  doctor_value_head_hidden_size: 512
+  doctor_device: auto
+  doctor_dtype: float16
+  doctor_freeze_base_model: false
+  
+  # Common settings
+  trust_remote_code: false
+  use_cache: true
+  cache_dir: ./cache
+
+data:
+  dataset_name: Anthropic/hh-rlhf
+  dataset_split: train
+  max_samples: null  # Use full dataset
+  max_sequence_length: 1024
+  preference_dimension: helpfulness
+  
+  # Data processing
+  batch_size: 4
+  num_workers: 4
+  shuffle: true
+  seed: 42
+  
+  # Validation
+  validation_split: 0.1
+  validation_max_samples: 1000
+
+reward:
+  # Behavioral variants (default prompts from paper)
+  positive_instruction: "You are a helpful, accurate, and polite assistant. Provide comprehensive and useful responses that directly address the user's needs. Be informative, clear, and considerate in your answers."
+  negative_instruction: "You are an assistant that provides minimal responses. Give brief answers that may omit important details or context. Be less helpful and provide incomplete information."
+  
+  # Token importance calculation
+  epsilon: 1.0e-8
+  tau: 1.0
+  normalization_method: mean
+  smoothing_function: tanh
+  
+  # Reward assignment
+  sparsity_threshold: 0.1
+  reward_scale: 1.0
+  
+  # Processing
+  importance_batch_size: 8
+  save_reward_data: true
+  reward_data_path: ./outputs/hh_rlhf/reward_data
+
+training:
+  # Optimization
+  learning_rate: 5.0e-5
+  weight_decay: 0.01
+  warmup_steps: 100
+  max_steps: 10000
+  gradient_clip_norm: 1.0
+  accumulation_steps: 1
+  
+  # Loss configuration
+  lambda_value: 1.0
+  subtb_clamp_min: -10.0
+  subtb_clamp_max: 10.0
+  subtb_eps: 1.0e-8
+  value_margin: 0.1
+  value_loss_type: hinge
+  
+  # Subtrajectory balance
+  max_subtrajectory_length: null
+  prefix_score_method: cumulative
+  
+  # Training settings
+  batch_size: 4
+  eval_batch_size: 8
+  max_sequence_length: 1024
+  
+  # Checkpointing and logging
+  output_dir: ./outputs/hh_rlhf
+  save_steps: 500
+  log_steps: 10
+  eval_steps: 100
+  save_total_limit: 3
+  
+  # Early stopping
+  early_stopping_patience: 5
+  early_stopping_threshold: 0.0001
+  
+  # Device and precision
+  device: auto
+  mixed_precision: true
+  gradient_checkpointing: false
+  
+  # Experiment tracking
+  wandb_project: llmdoctor_hh_rlhf
+  wandb_entity: null
+  wandb_name: null
+
+inference:
+  # Reward-guided decoding
+  alpha: 1.0
+  beta: 0.5
+  
+  # Generation settings
+  max_new_tokens: 512
+  temperature: 1.0
+  top_p: 0.9
+  top_k: null
+  do_sample: true
+  num_return_sequences: 1
+  
+  # Efficiency
+  batch_size: 1
+  use_cache: true
+  
+  # Evaluation
+  eval_prompts_file: null
+  output_file: ./outputs/hh_rlhf/generations.json
+  save_generations: true
+
+evaluation:
+  # Evaluation data
+  eval_dataset: Anthropic/hh-rlhf
+  eval_split: test
+  eval_max_samples: 300
+  
+  # Evaluation method
+  eval_method: gpt4
+  gpt4_api_key: null  # Set via environment variable
+  gpt4_model: gpt-4
+  
+  # Metrics
+  compute_diversity: true
+  diversity_metric: distinct-4
+  compute_perplexity: false
+  
+  # Head-to-head comparison
+  baseline_methods:
+    - dpo
+    - genarm
+    - args
+    - transfer-q
+  num_comparisons: 300
+  
+  # Output
+  results_dir: ./results/hh_rlhf
+  save_detailed_results: true
+
+# Environment settings
+seed: 42
+deterministic: true
+log_level: INFO

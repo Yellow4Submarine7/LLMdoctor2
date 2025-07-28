@@ -1,0 +1,178 @@
+# Weak-to-Strong Guidance Configuration
+# 7B doctor model guiding 70B patient model
+
+experiment_name: weak_to_strong_7b_to_70b
+experiment_type: weak_to_strong
+description: Weak-to-strong guidance with 7B doctor model guiding 70B patient model
+tags:
+  - weak-to-strong
+  - tulu2
+  - scalability
+
+model:
+  # Large patient model (70B frozen)
+  patient_model_name: allenai/tulu-2-70b
+  patient_device: auto
+  patient_dtype: float16
+  patient_load_in_8bit: true  # Use 8-bit quantization for 70B model
+  patient_load_in_4bit: false
+  
+  # Small doctor model (7B trainable)
+  doctor_model_name: allenai/tulu-2-7b
+  doctor_num_preference_dims: 1
+  doctor_value_head_hidden_size: 512
+  doctor_device: auto
+  doctor_dtype: float16
+  doctor_freeze_base_model: false
+  
+  # Common settings
+  trust_remote_code: false
+  use_cache: true
+  cache_dir: ./cache
+
+data:
+  dataset_name: Anthropic/hh-rlhf
+  dataset_split: train
+  max_samples: 20000  # Use subset for efficiency
+  max_sequence_length: 512  # Shorter sequences for large model
+  preference_dimension: helpfulness
+  
+  # Data processing
+  batch_size: 2  # Smaller batch for memory efficiency
+  num_workers: 4
+  shuffle: true
+  seed: 42
+  
+  # Validation
+  validation_split: 0.1
+  validation_max_samples: 500
+
+reward:
+  # Behavioral variants
+  positive_instruction: "You are a helpful, accurate, and polite assistant. Provide comprehensive and useful responses that directly address the user's needs."
+  negative_instruction: "You are an assistant that provides minimal responses. Give brief answers that may omit important details or context."
+  
+  # Token importance calculation
+  epsilon: 1.0e-8
+  tau: 1.0
+  normalization_method: mean
+  smoothing_function: tanh
+  
+  # Reward assignment
+  sparsity_threshold: 0.1
+  reward_scale: 1.0
+  
+  # Processing
+  importance_batch_size: 4  # Smaller batch for large model
+  save_reward_data: true
+  reward_data_path: ./outputs/weak_to_strong/reward_data
+
+training:
+  # Optimization for small doctor model
+  learning_rate: 5.0e-5
+  weight_decay: 0.01
+  warmup_steps: 100
+  max_steps: 5000  # Fewer steps for efficiency
+  gradient_clip_norm: 1.0
+  accumulation_steps: 2  # Gradient accumulation for effective batch size
+  
+  # Loss configuration
+  lambda_value: 1.0
+  subtb_clamp_min: -10.0
+  subtb_clamp_max: 10.0
+  subtb_eps: 1.0e-8
+  value_margin: 0.1
+  value_loss_type: hinge
+  
+  # Subtrajectory balance
+  max_subtrajectory_length: 50  # Limit for memory efficiency
+  prefix_score_method: cumulative
+  
+  # Training settings
+  batch_size: 2
+  eval_batch_size: 4
+  max_sequence_length: 512
+  
+  # Checkpointing and logging
+  output_dir: ./outputs/weak_to_strong
+  save_steps: 500
+  log_steps: 20
+  eval_steps: 200
+  save_total_limit: 3
+  
+  # Early stopping
+  early_stopping_patience: 3
+  early_stopping_threshold: 0.0001
+  
+  # Device and precision
+  device: auto
+  mixed_precision: true
+  gradient_checkpointing: true  # Enable for memory efficiency
+  
+  # Experiment tracking
+  wandb_project: llmdoctor_weak_to_strong
+  wandb_entity: null
+  wandb_name: null
+
+inference:
+  # Reward-guided decoding
+  alpha: 1.0
+  beta: 0.3  # Lower weight since doctor is much smaller
+  
+  # Generation settings
+  max_new_tokens: 256  # Shorter for efficiency
+  temperature: 1.0
+  top_p: 0.9
+  top_k: null
+  do_sample: true
+  num_return_sequences: 1
+  
+  # Efficiency
+  batch_size: 1
+  use_cache: true
+  
+  # Evaluation
+  eval_prompts_file: null
+  output_file: ./outputs/weak_to_strong/generations.json
+  save_generations: true
+
+evaluation:
+  # Evaluation data
+  eval_dataset: AlpacaEval
+  eval_split: null
+  eval_max_samples: 805  # Full AlpacaEval set
+  
+  # Evaluation method
+  eval_method: alpacaeval
+  gpt4_api_key: null
+  gpt4_model: gpt-4
+  
+  # AlpacaEval specific settings
+  alpaca_eval_config:
+    annotator_model: gpt-4
+    output_path: ./results/weak_to_strong/alpaca_eval
+    is_length_controlled: true
+  
+  # Metrics
+  compute_diversity: true
+  diversity_metric: distinct-4
+  compute_perplexity: false
+  
+  # Compare against different model scales
+  baseline_methods:
+    - tulu2_sft_7b
+    - tulu2_sft_13b
+    - tulu2_sft_70b
+    - tulu2_dpo_7b
+    - tulu2_dpo_13b
+    - tulu2_dpo_70b
+    - genarm_7b_guide_70b
+  
+  # Output
+  results_dir: ./results/weak_to_strong
+  save_detailed_results: true
+
+# Environment settings
+seed: 42
+deterministic: true
+log_level: INFO
